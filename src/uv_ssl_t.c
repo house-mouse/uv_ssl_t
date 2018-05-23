@@ -103,6 +103,8 @@ void uv_ssl_idle_close_cb(uv_handle_t* handle) {
   uv_ssl_t* ssl;
   uv_link_t* source;
   uv_link_close_cb close_cb;
+  QUEUE *q;
+  QUEUE *next;
 
   ssl = container_of(handle, uv_ssl_t, write_cb_idle);
 
@@ -113,6 +115,17 @@ void uv_ssl_idle_close_cb(uv_handle_t* handle) {
   ringbuffer_destroy(&ssl->encrypted.output);
 
   close_cb(source);
+
+  // Call call callbacks for resource free-ing
+  for (q = QUEUE_HEAD(&ssl->write_cb_queue); q != &ssl->write_cb_queue; q = next) {
+    uv_ssl_write_cb_wrap_t* wrap;
+    next = QUEUE_NEXT(q);
+    wrap = QUEUE_DATA(q, uv_ssl_write_cb_wrap_t, member);
+
+    wrap->cb(wrap->source, 0, wrap->arg);
+    free(wrap);
+  }
+
   free(ssl);
 }
 
@@ -538,6 +551,11 @@ int uv_ssl_shutdown(uv_ssl_t* ssl, uv_link_t* source, uv_link_shutdown_cb cb,
 
 void uv_ssl_error(uv_ssl_t* ssl, int err) {
   uv_ssl_state_t state;
+
+  // On these errors ssl could be already free-d
+  if(UV_ECANCELED == err || UV_EPIPE == err){
+    return;
+  }
 
   state = ssl->state;
 

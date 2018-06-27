@@ -5,6 +5,7 @@
 #include "src/bio.h"
 #include "src/errors.h"
 #include "src/link_methods.h"
+#include <openssl/err.h>
 
 static void uv_ssl_init_close_cb(uv_handle_t* handle);
 static void uv_ssl_idle_close_cb(uv_handle_t* handle);
@@ -194,7 +195,11 @@ int uv_ssl_cycle_input(uv_ssl_t* s) {
 
       bytes = SSL_read(s->ssl, buf.base, buf.len);
       if (bytes <= 0) {
-        /* Allow consuming stream to deallocate the data */
+        err = SSL_get_error(s->ssl, bytes);
+        if(err == SSL_ERROR_SSL){
+          while(ERR_get_error());
+        }
+	/* Allow consuming stream to deallocate the data */
         uv_link_propagate_read_cb((uv_link_t*) s, 0, &buf);
         break;
       } else {
